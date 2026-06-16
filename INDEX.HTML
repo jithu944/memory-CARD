@@ -1,0 +1,257 @@
+<div id="memory-game-root">
+    <div class="game-container" id="gameMainContainer">
+        <h3 class="game-title">🧠 Memory Pro</h3>
+        
+        <div class="game-stats">
+            <span>⏱ <span id="time">0</span>s</span>
+            <span>🎯 <span id="moves">0</span></span>
+            <span id="stars">★★★</span>
+        </div>
+
+        <div class="game-controls">
+            <select id="difficulty" onchange="startGame()">
+                <option value="4">Easy (4x4)</option>
+                <option value="5">Medium (5x4)</option>
+                <option value="6">Hard (6x4)</option>
+            </select>
+            <button class="fullscreen-btn" onclick="toggleFullscreen()">Full Screen</button>
+            <div class="best-score">Best: <span id="bestTime">--</span>s</div>
+        </div>
+
+        <div id="grid"></div>
+
+        <button class="restart-btn" onclick="startGame()">Restart Game</button>
+    </div>
+
+    <style>
+        #memory-game-root {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            margin: 20px auto;
+            max-width: 400px;
+            background: #1e293b;
+            color: white;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        /* Fullscreen styles */
+        #memory-game-root:fullscreen {
+            max-width: none;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 0;
+            background: #0f172a;
+        }
+
+        #memory-game-root .game-title { margin: 0 0 15px 0; color: #38bdf8; text-align: center; }
+
+        #memory-game-root .game-stats {
+            display: flex;
+            justify-content: space-around;
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            width: 90%;
+            max-width: 360px;
+        }
+
+        #memory-game-root .game-controls { 
+            margin-bottom: 15px; 
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        #memory-game-root select, 
+        #memory-game-root .fullscreen-btn {
+            background: #334155;
+            color: white;
+            border: 1px solid #475569;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        #memory-game-root .fullscreen-btn:hover {
+            background: #475569;
+        }
+
+        #memory-game-root #grid {
+            display: grid;
+            gap: 8px;
+            perspective: 1000px;
+            margin-bottom: 15px;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        #memory-game-root .card {
+            height: 75px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+            cursor: pointer;
+        }
+
+        #memory-game-root .card.flip { transform: rotateY(180deg); }
+
+        #memory-game-root .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+
+        #memory-game-root .front { background: #334155; border: 1px solid #475569; }
+        #memory-game-root .back { background: #f8fafc; color: #000; transform: rotateY(180deg); }
+
+        #memory-game-root .card.matched .back {
+            background: #bbf7d0;
+            border: 2px solid #22c55e;
+            animation: matchScale 0.4s ease;
+        }
+
+        @keyframes matchScale {
+            0% { transform: rotateY(180deg) scale(1); }
+            50% { transform: rotateY(180deg) scale(1.1); }
+            100% { transform: rotateY(180deg) scale(1); }
+        }
+
+        #memory-game-root .restart-btn {
+            width: 100%;
+            max-width: 360px;
+            background: #38bdf8;
+            color: #0f172a;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #memory-game-root .best-score { 
+            width: 100%;
+            font-size: 11px; 
+            color: #94a3b8; 
+            margin-top: 5px;
+            text-align: center;
+        }
+    </style>
+
+    <script>
+    (function() {
+        const emojis = ["🍎","🍌","🍇","🍒","🍉","🥝","🍍","🍓","🥑","🍑","🍋","🍊"];
+        let cards = [], flipped = [], matched = 0, moves = 0, time = 0, timer;
+        let isProcessing = false;
+
+        const root = document.getElementById("memory-game-root");
+
+        window.toggleFullscreen = function() {
+            if (!document.fullscreenElement) {
+                root.requestFullscreen().catch(err => {
+                    console.error(`Fullscreen failed: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        };
+
+        window.startGame = function() {
+            const cols = parseInt(root.querySelector("#difficulty").value);
+            const grid = root.querySelector("#grid");
+            
+            grid.innerHTML = "";
+            grid.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+            matched = 0; moves = 0; time = 0; flipped = [];
+            isProcessing = false;
+            
+            root.querySelector("#moves").innerText = 0;
+            root.querySelector("#time").innerText = 0;
+            root.querySelector("#stars").innerText = "★★★";
+            
+            const key = `best_${cols}`;
+            root.querySelector("#bestTime").innerText = localStorage.getItem(key) || "--";
+
+            clearInterval(timer);
+            timer = setInterval(() => {
+                time++;
+                root.querySelector("#time").innerText = time;
+            }, 1000);
+
+            const total = cols * 4;
+            const selected = emojis.slice(0, total / 2);
+            cards = [...selected, ...selected].sort(() => Math.random() - 0.5);
+
+            cards.forEach(emoji => {
+                const card = document.createElement("div");
+                card.className = "card";
+                card.dataset.value = emoji;
+                card.innerHTML = `<div class="card-face front"></div><div class="card-face back">${emoji}</div>`;
+                card.onclick = () => flipCard(card);
+                grid.appendChild(card);
+            });
+        };
+
+        function flipCard(card) {
+            if (isProcessing || card.classList.contains("flip") || card.classList.contains("matched")) return;
+
+            card.classList.add("flip");
+            flipped.push(card);
+
+            if (flipped.length === 2) {
+                moves++;
+                root.querySelector("#moves").innerText = moves;
+                isProcessing = true;
+
+                const [c1, c2] = flipped;
+                if (c1.dataset.value === c2.dataset.value) {
+                    matched += 2;
+                    c1.classList.add("matched");
+                    c2.classList.add("matched");
+                    flipped = [];
+                    isProcessing = false;
+                    
+                    if (matched === cards.length) {
+                        clearInterval(timer);
+                        const cols = root.querySelector("#difficulty").value;
+                        const key = `best_${cols}`;
+                        const best = localStorage.getItem(key);
+                        if (!best || time < parseInt(best)) localStorage.setItem(key, time);
+                        setTimeout(() => alert(`🎉 Victory! Time: ${time}s`), 500);
+                    }
+                } else {
+                    setTimeout(() => {
+                        c1.classList.remove("flip");
+                        c2.classList.remove("flip");
+                        flipped = [];
+                        isProcessing = false;
+                    }, 800);
+                }
+                
+                const limit = (parseInt(root.querySelector("#difficulty").value) * 4) + 4;
+                if (moves > limit) root.querySelector("#stars").innerText = "★☆☆";
+                else if (moves > limit * 0.7) root.querySelector("#stars").innerText = "★★☆";
+            }
+        }
+
+        startGame();
+    })();
+    </script>
+</div>
